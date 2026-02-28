@@ -1,6 +1,69 @@
-import { Plugin, TFile, ItemView, WorkspaceLeaf } from "obsidian";
+import { Plugin, TFile, ItemView, WorkspaceLeaf, Notice } from "obsidian";
+import { moment } from "obsidian";
 
 const VIEW_TYPE = "aliases-check-view";
+
+// ---------------------------------------------------------------------------
+// i18n
+// ---------------------------------------------------------------------------
+type Locale = "en" | "zh";
+
+interface Translations {
+  viewTitle: string;
+  refreshTooltip: string;
+  noConflicts: string;
+  summaryOne: string;
+  summaryMultiple: (n: number) => string;
+  conflictGroup: (i: number) => string;
+  notesCount: (n: number) => string;
+  compareBtn: string;
+  conflictNamesLabel: string;
+  aliasesLabel: (aliases: string) => string;
+  splitLimitNotice: (max: number) => string;
+  cannotOpenSidebar: string;
+}
+
+const TRANSLATIONS: Record<Locale, Translations> = {
+  en: {
+    viewTitle: "Aliases Check",
+    refreshTooltip: "Refresh",
+    noConflicts: "No duplicate notes found.",
+    summaryOne: "1 conflict group found",
+    summaryMultiple: (n) => `${n} conflict groups found`,
+    conflictGroup: (i) => `Conflict Group ${i}`,
+    notesCount: (n) => `(${n} notes)`,
+    compareBtn: "Compare",
+    conflictNamesLabel: "Conflict names: ",
+    aliasesLabel: (a) => `  (aliases: ${a})`,
+    splitLimitNotice: (max) =>
+      `Only the first ${max} files were opened. The rest were skipped to avoid too many panes.`,
+    cannotOpenSidebar: "Aliases Check: failed to open sidebar panel.",
+  },
+  zh: {
+    viewTitle: "别名检查",
+    refreshTooltip: "刷新",
+    noConflicts: "未发现重复笔记。",
+    summaryOne: "发现 1 个冲突组",
+    summaryMultiple: (n) => `发现 ${n} 个冲突组`,
+    conflictGroup: (i) => `冲突组 ${i}`,
+    notesCount: (n) => `(${n} 篇笔记)`,
+    compareBtn: "对比",
+    conflictNamesLabel: "冲突名称：",
+    aliasesLabel: (a) => `  （别名：${a}）`,
+    splitLimitNotice: (max) =>
+      `仅打开了前 ${max} 个文件，其余已跳过以避免分屏过多。`,
+    cannotOpenSidebar: "别名检查：无法打开侧边栏面板。",
+  },
+};
+
+function getLocale(): Locale {
+  const lang = moment.locale();
+  return lang.startsWith("zh") ? "zh" : "en";
+}
+
+function t(): Translations {
+  return TRANSLATIONS[getLocale()];
+}
 
 // ---------------------------------------------------------------------------
 // Union-Find for grouping conflicting files
@@ -71,13 +134,14 @@ interface ConflictGroup {
 // ---------------------------------------------------------------------------
 class ConflictView extends ItemView {
   private groups: ConflictGroup[] = [];
+  onRefresh?: () => void;
 
   getViewType(): string {
     return VIEW_TYPE;
   }
 
   getDisplayText(): string {
-    return "Aliases Check";
+    return t().viewTitle;
   }
 
   getIcon(): string {
@@ -85,12 +149,8 @@ class ConflictView extends ItemView {
   }
 
   async onOpen() {
-    this.addAction("refresh-cw", "Refresh", () => {
-      // Trigger a re-check via the plugin instance
-      const plugin = (this.app as any).plugins?.plugins?.["aliases-check"] as AliasesCheckPlugin | undefined;
-      if (plugin) {
-        plugin.activateView();
-      }
+    this.addAction("refresh-cw", t().refreshTooltip, () => {
+      this.onRefresh?.();
     });
     this.renderContent();
   }
@@ -108,17 +168,21 @@ class ConflictView extends ItemView {
     const container = this.contentEl;
     container.empty();
     container.addClass("aliases-check-sidebar");
+    const l = t();
 
     if (this.groups.length === 0) {
       container.createEl("div", {
-        text: "No duplicate notes found.",
+        text: l.noConflicts,
         cls: "aliases-check-no-conflict",
       });
       return;
     }
 
     container.createEl("div", {
-      text: `${this.groups.length} conflict group(s) found`,
+      text:
+        this.groups.length === 1
+          ? l.summaryOne
+          : l.summaryMultiple(this.groups.length),
       cls: "aliases-check-summary",
     });
 
@@ -131,15 +195,15 @@ class ConflictView extends ItemView {
 
       const titleArea = header.createDiv({ cls: "aliases-check-card-title" });
       titleArea.createEl("strong", {
-        text: `Conflict Group ${i + 1}`,
+        text: l.conflictGroup(i + 1),
       });
       titleArea.createEl("span", {
-        text: ` (${group.files.length} notes)`,
+        text: ` ${l.notesCount(group.files.length)}`,
         cls: "aliases-check-count",
       });
 
       const compareBtn = header.createEl("button", {
-        text: "Compare",
+        text: l.compareBtn,
         cls: "aliases-check-compare-btn",
       });
       compareBtn.addEventListener("click", () => {
@@ -148,7 +212,7 @@ class ConflictView extends ItemView {
 
       // Conflict names as tags
       const tagsEl = card.createDiv({ cls: "aliases-check-tags" });
-      tagsEl.createEl("span", { text: "Conflict names: ", cls: "aliases-check-tags-label" });
+      tagsEl.createEl("span", { text: l.conflictNamesLabel, cls: "aliases-check-tags-label" });
       for (const name of group.conflictNames) {
         tagsEl.createEl("span", {
           text: name,
@@ -177,7 +241,7 @@ class ConflictView extends ItemView {
 
         if (aliases.length > 0) {
           li.createEl("span", {
-            text: `  (aliases: ${aliases.join(", ")})`,
+            text: l.aliasesLabel(aliases.join(", ")),
             cls: "aliases-check-aliases",
           });
         }
@@ -188,14 +252,25 @@ class ConflictView extends ItemView {
   private async openFilesInSplit(files: TFile[]) {
     if (files.length === 0) return;
 
-    // First file: open in the current editor leaf
-    const firstLeaf = this.app.workspace.getLeaf(false);
-    await firstLeaf.openFile(files[0]);
+    const MAX_SPLITS = 5;
+    const filesToOpen = files.slice(0, MAX_SPLITS);
 
-    // Subsequent files: create vertical splits
-    for (let i = 1; i < files.length; i++) {
-      const newLeaf = this.app.workspace.getLeaf("split", "vertical");
-      await newLeaf.openFile(files[i]);
+    try {
+      // First file: open in the current editor leaf
+      const firstLeaf = this.app.workspace.getLeaf(false);
+      await firstLeaf.openFile(filesToOpen[0]);
+
+      // Subsequent files: create vertical splits
+      for (let i = 1; i < filesToOpen.length; i++) {
+        const newLeaf = this.app.workspace.getLeaf("split", "vertical");
+        await newLeaf.openFile(filesToOpen[i]);
+      }
+    } catch (e) {
+      console.error("Aliases Check: failed to open files in split", e);
+    }
+
+    if (files.length > MAX_SPLITS) {
+      new Notice(t().splitLimitNotice(MAX_SPLITS));
     }
   }
 
@@ -220,7 +295,11 @@ class ConflictView extends ItemView {
 // ---------------------------------------------------------------------------
 export default class AliasesCheckPlugin extends Plugin {
   async onload() {
-    this.registerView(VIEW_TYPE, (leaf: WorkspaceLeaf) => new ConflictView(leaf));
+    this.registerView(VIEW_TYPE, (leaf: WorkspaceLeaf) => {
+      const view = new ConflictView(leaf);
+      view.onRefresh = () => this.activateView();
+      return view;
+    });
 
     this.addCommand({
       id: "check-duplicate-aliases",
@@ -244,7 +323,10 @@ export default class AliasesCheckPlugin extends Plugin {
     let leaf = workspace.getLeavesOfType(VIEW_TYPE)[0];
     if (!leaf) {
       const rightLeaf = workspace.getRightLeaf(false);
-      if (!rightLeaf) return;
+      if (!rightLeaf) {
+        new Notice(t().cannotOpenSidebar);
+        return;
+      }
       await rightLeaf.setViewState({ type: VIEW_TYPE, active: true });
       leaf = rightLeaf;
     }
