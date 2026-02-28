@@ -1,0 +1,9 @@
+{
+  "id": "aliases-check",
+  "name": "Aliases Check",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Detect conflicts between note filenames and aliases to find duplicate notes.",
+  "author": "Penguin Wayne",
+  "isDesktopOnly": false
+}
