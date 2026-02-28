@@ -11,6 +11,7 @@ type Locale = "en" | "zh";
 interface Translations {
   viewTitle: string;
   refreshTooltip: string;
+  refreshBtn: string;
   noConflicts: string;
   summaryOne: string;
   summaryMultiple: (n: number) => string;
@@ -27,6 +28,7 @@ const TRANSLATIONS: Record<Locale, Translations> = {
   en: {
     viewTitle: "Aliases Check",
     refreshTooltip: "Refresh",
+    refreshBtn: "Refresh",
     noConflicts: "No duplicate notes found.",
     summaryOne: "1 conflict group found",
     summaryMultiple: (n) => `${n} conflict groups found`,
@@ -42,6 +44,7 @@ const TRANSLATIONS: Record<Locale, Translations> = {
   zh: {
     viewTitle: "别名检查",
     refreshTooltip: "刷新",
+    refreshBtn: "刷新",
     noConflicts: "未发现重复笔记。",
     summaryOne: "发现 1 个冲突组",
     summaryMultiple: (n) => `发现 ${n} 个冲突组`,
@@ -169,6 +172,16 @@ class ConflictView extends ItemView {
     container.empty();
     container.addClass("aliases-check-sidebar");
     const l = t();
+
+    // Top refresh button
+    const toolbar = container.createDiv({ cls: "aliases-check-toolbar" });
+    const refreshBtn = toolbar.createEl("button", {
+      text: l.refreshBtn,
+      cls: "aliases-check-refresh-btn",
+    });
+    refreshBtn.addEventListener("click", () => {
+      this.onRefresh?.();
+    });
 
     if (this.groups.length === 0) {
       container.createEl("div", {

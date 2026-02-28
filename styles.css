@@ -7,6 +7,28 @@
   padding: 8px 0;
 }
 
+/* Toolbar */
+.aliases-check-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.aliases-check-refresh-btn {
+  padding: 4px 12px;
+  font-size: 0.85em;
+  font-weight: 500;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+}
+
+.aliases-check-refresh-btn:hover {
+  background: var(--interactive-hover);
+}
+
 .aliases-check-summary {
   font-weight: 600;
   margin-bottom: 10px;
