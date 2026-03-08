@@ -151,14 +151,14 @@ class ConflictView extends ItemView {
     return "search";
   }
 
-  async onOpen() {
+  onOpen() {
     this.addAction("refresh-cw", t().refreshTooltip, () => {
       this.onRefresh?.();
     });
     this.renderContent();
   }
 
-  async onClose() {
+  onClose() {
     this.contentEl.empty();
   }
 
@@ -220,7 +220,7 @@ class ConflictView extends ItemView {
         cls: "aliases-check-compare-btn",
       });
       compareBtn.addEventListener("click", () => {
-        this.openFilesInSplit(group.files);
+        void this.openFilesInSplit(group.files);
       });
 
       // Conflict names as tags
@@ -249,7 +249,7 @@ class ConflictView extends ItemView {
         });
         link.addEventListener("click", (e) => {
           e.preventDefault();
-          this.app.workspace.openLinkText(file.path, "", false);
+          void this.app.workspace.openLinkText(file.path, "", false);
         });
 
         if (aliases.length > 0) {
@@ -307,26 +307,26 @@ class ConflictView extends ItemView {
 // Plugin
 // ---------------------------------------------------------------------------
 export default class AliasesCheckPlugin extends Plugin {
-  async onload() {
+  onload() {
     this.registerView(VIEW_TYPE, (leaf: WorkspaceLeaf) => {
       const view = new ConflictView(leaf);
-      view.onRefresh = () => this.activateView();
+      view.onRefresh = () => {
+        void this.activateView();
+      };
       return view;
     });
 
     this.addCommand({
       id: "check-duplicate-aliases",
-      name: "Check Duplicate Aliases",
-      callback: () => this.activateView(),
+      name: "Check duplicate aliases",
+      callback: () => {
+        void this.activateView();
+      },
     });
 
-    this.addRibbonIcon("search", "Check Duplicate Aliases", () => {
-      this.activateView();
+    this.addRibbonIcon("search", "Check duplicate aliases", () => {
+      void this.activateView();
     });
-  }
-
-  onunload() {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE);
   }
 
   async activateView() {
@@ -344,7 +344,7 @@ export default class AliasesCheckPlugin extends Plugin {
       leaf = rightLeaf;
     }
 
-    workspace.revealLeaf(leaf);
+    void workspace.revealLeaf(leaf);
 
     // Run check and pass results to the view
     const groups = this.findConflicts();
@@ -413,7 +413,7 @@ export default class AliasesCheckPlugin extends Plugin {
     // Track which conflict names link which files
     const fileConflictNames = new Map<string, Set<string>>(); // filePath -> set of conflict names
 
-    for (const [name, entries] of nameToFiles.entries()) {
+    for (const entries of nameToFiles.values()) {
       // Deduplicate by file path
       const uniqueFiles = new Map<string, TFile>();
       for (const e of entries) {
